@@ -95,8 +95,12 @@ os.chdir(cachedir)
 
 # OK, now loop through the files...
 srcfiles = os.listdir(path=args.src)
+srcfiles.sort()
 
+i = 0
 for srcfile in srcfiles:
+    i += 1
+    logger.info(f'Processing file {i} of {len(srcfiles)}: {srcfile}')
     # If it's an md5sums.txt file, skip it
     if srcfile == 'md5sums.txt':
         logger.info('skipping md5sums.txt file')
