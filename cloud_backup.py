@@ -17,6 +17,7 @@ def md5sum(file, logger=None):
         f.write(text)
 
 def run(cmd, logger):
+    logger.debug(f'running: {cmd}')
     ret = subprocess.run(cmd, capture_output=True)
     stdout = ret.stdout.decode('ASCII')
     stderr = ret.stderr.decode('ASCII')
@@ -31,8 +32,11 @@ def crypt(src, dest, passphrase, logger=None):
     logger.info(f'Encrypting {src} into {dest}')
     run(cmd, logger)
 
-def tocloud(filename, cloud, logger=None):
-    cmd = ['rclone', 'copy', filename, cloud]
+def tocloud(filename, cloud, logger=None, noignore=False):
+    if noignore:
+        cmd = ['rclone', 'copy', filename, cloud]
+    else:
+        cmd = ['rclone', '--ignore-existing', 'copy', filename, cloud]
     logger.info(f'rcloud copy {filename} to {cloud}')
     run(cmd, logger)
 
@@ -40,9 +44,12 @@ parser = argparse.ArgumentParser(description='Encrypt/Decrypt all files in a dir
 parser.add_argument('--debug', action='store_true', help='Turn on more log messages')
 parser.add_argument('--demon', action='store_true', help='Do not output to console, only logfile')
 parser.add_argument('--dryrun', action='store_true', help='do not actually do it, just say what would be done')
+parser.add_argument('--rclonenoignore', action='store_true', help='Do not pass --ignore_existing argument to rclone')
 parser.add_argument('--keepcache', action='store_true', help='Do not clear out the cache - leave for inspection')
 parser.add_argument('--cachedir', action='store', help='directory to use as local cache. Also looks at CLOUDBACKUP_CACHE environment variable')
 parser.add_argument('--passphrase', action='store', help='directory to use as local cache. Also looks at CLOUDBACKUP_PASSPHRASE environment variable')
+parser.add_argument('--startfile', action='store', help='Start processing at file number ...')
+parser.add_argument('--stopfile', action='store', help='Stop processing at file number ...')
 parser.add_argument('src', action='store', help='Directory to read from')
 parser.add_argument('dest', action='store', help='Directory to write to')
 
@@ -81,6 +88,11 @@ if cachedir is None:
     logger.error('No cachedir supplied. Cannot continue')
     exit(1)
 
+# other options
+rclonenoignore = True if args.rclonenoignore else False
+startfile = int(args.startfile) if args.startfile is not None else 0
+stopfile = int(args.stopfile) if args.stopfile is not None else 0
+
 # PID specific subdirectory in cachedir
 pid = str(os.getpid())
 cachedir = os.path.join(cachedir, pid)
@@ -100,6 +112,12 @@ srcfiles.sort()
 i = 0
 for srcfile in srcfiles:
     i += 1
+    if startfile != 0 and i < startfile:
+        logger.info(f'Have not reached startfile yet, skipping file number {i} : {srcfile}')
+        continue
+    if stopfile != 0 and i > stopfile:
+        logger.info(f'Reached stopfile already, stopping')
+        break
     logger.info(f'Processing file {i} of {len(srcfiles)}: {srcfile}')
     # If it's an md5sums.txt file, skip it
     if srcfile == 'md5sums.txt':
@@ -131,13 +149,14 @@ for srcfile in srcfiles:
 
     # move the destfile to the cloud backup location
     if not args.dryrun:
-        tocloud(destfile, args.dest, logger=logger)
+        tocloud(destfile, args.dest, logger=logger, noignore=rclonenoignore)
     if not args.keepcache:
         logger.info(f'deleting {destfile} from {cachedir}')
         os.unlink(destfile)
 
 # move the md5sum file to the cloud backup location
 if not args.dryrun:
+    logger.info("Copying md5sum.txt file to cloud")
     tocloud('md5sums.txt', args.dest, logger=logger)
 if not args.keepcache:
     os.unlink('md5sums.txt')
@@ -147,3 +166,4 @@ os.chdir(oldpwd)
 if not args.keepcache:
     os.rmdir(cachedir)
 
+logger.info("All done. Exiting")
