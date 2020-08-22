@@ -103,7 +103,7 @@ if(locked):
 putfile(pidfile, dest, str(os.getpid()))
 
 # Get exclude option
-excludefile = os.path.join('rsync_backup.exclude', dest)
+excludefile = os.path.join(dest, 'rsync_backup.exclude')
 
 # Get last good backup marker
 lastgood = getfile('rsync_backup.lastgood', dest)
